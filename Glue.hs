@@ -1,8 +1,6 @@
 module Glue (
   GlfwInputs(..),
   GlfwJoystickInput(..),
-  GlOut(..),
-  execInMainThread,
   runGlfw
 ) where
 
@@ -19,19 +17,18 @@ import Graphics.UI.GLFW
 import Control.Broccoli
 
 data GlfwInputs = GlfwInputs
-  { onKey :: E (Key, Int, KeyState, ModifierKeys)
-  , onChar :: E Char
-  , onCursorPos :: X (Double,Double)
-  , onMouseButton :: E (MouseButton, MouseButtonState, ModifierKeys)
-  , onScroll :: E (Double,Double)
-  , glfwJoysticks :: Vector GlfwJoystickInput -- 16
-  , onFramebufferResize :: E (Int,Int)
-  , onVsync :: E ()
-  , onClose :: E ()
+  { glfwKey :: E (Key, Int, KeyState, ModifierKeys)
+  , glfwChar :: E Char
+  , glfwCursorPos :: X (Double,Double)
+  , glfwMouseButton :: E (MouseButton, MouseButtonState, ModifierKeys)
+  , glfwScroll :: E (Double,Double)
+  , glfwJoysticks :: Vector GlfwJoystickInput -- ^ there are 16 joysticks
+  , glfwFramebufferResize :: E (Int,Int)
+  , glfwClose :: E ()
   }
 
 data GlfwJoystickInput = GlfwJoystickInput
-  { glfwJoystickAppearEvent :: E String -- name of joystick
+  { glfwJoystickAppearEvent :: E String -- ^ name of joystick
   , glfwJoystickLeaveEvent :: E ()
   , glfwJoystickAxes :: X [Double]
   , glfwJoystickButtonEvent :: E (Int, JoystickButtonState) }
@@ -44,17 +41,14 @@ errorCb err msg = do
   hPutStrLn stderr (show err ++ "(" ++ msg ++ ")")
   exitFailure
 
-newtype GlOut = GlOut (MVar (IO ()))
-execInMainThread :: GlOut -> IO () -> IO ()
-execInMainThread (GlOut mv) io = putMVar mv io
-
-runGlfw :: Int
-        -> Int
-        -> String
-        -> (GlfwInputs -> (IO () -> IO ()) -> E Boot -> X Time -> Setup (E ()))
-        -> IO ()
-runGlfw winW winH title setup = do
-  hPutStrLn stderr "runGlfw begin"
+runGlfw :: Int -- ^ window width
+        -> Int -- ^ window height
+        -> String -- ^ window title
+        -> IO ()  -- ^ initialization procedure
+        -> (a -> IO ()) -- ^ render procedure
+        -> (GlfwInputs -> E Boot -> X Time -> Setup (X a, E ())) -- ^ connect GLFW inputs to a picture signal that will be rendered on vsync
+        -> IO () -- ^ returns if the @E ()@ occurs, such as window close
+runGlfw winW winH title initProc renderProc setup = do
   setErrorCallback (Just errorCb)
   status <- Graphics.UI.GLFW.init
   print status
@@ -65,17 +59,13 @@ runGlfw winW winH title setup = do
   windowHint (WindowHint'ContextVersionMinor 2)
   windowHint (WindowHint'OpenGLForwardCompat True)
   windowHint (WindowHint'OpenGLProfile OpenGLProfile'Core)
-  hPutStrLn stderr "creating window"
   mwin <- createWindow winW winH title Nothing Nothing
   case mwin of
     Nothing -> do
-      hPutStrLn stderr "window failed"
       pollEvents
       exitFailure
     Just win -> do
-      hPutStrLn stderr "start setup"
       windowClosingRef <- newIORef False
-      pleaseExit <- newIORef False
       makeContextCurrent (Just win)
       swapInterval 1
       initialMouse <- return (0,0) --get from glfw
@@ -92,8 +82,8 @@ runGlfw winW winH title setup = do
       setCharCallback        win (Just (charCb (putMVar charMV)))
       setMouseButtonCallback win (Just (clickCb (putMVar clickMV)))
       setCursorPosCallback   win (Just (mouseCb (putMVar mouseMV)))
-      forkIO $ do
-        putStrLn "forked, about to runProgram"
+      initProc
+      _ <- forkIO $ do
         runProgram $ \onBoot time -> do
           (mouse, setMouse) <- newX initialMouse
           (onClick, click) <- newE
@@ -111,24 +101,28 @@ runGlfw winW winH title setup = do
           input (forever (takeMVar closeMV >>= close))
           let joysticks = V.replicate 16 nullJoystick
           let glfwIns = GlfwInputs onKey onChar mouse onClick never
-                  joysticks onResize onVsync onClose
-          setup glfwIns (\io -> putMVar graphicsMV io) onBoot time
-        putStrLn "program ended"
-        writeIORef pleaseExit True
-      putStrLn "entering main loop"
-      untilM (readIORef pleaseExit) $ do
+                  joysticks onResize onClose
+          (scene, exit) <- setup glfwIns onBoot time
+          output
+            (\_ x -> putMVar graphicsMV (Just (renderProc x)))
+            (snapshot_ onVsync scene)
+          return exit
+        putMVar graphicsMV Nothing
+      forever $ do
         pollEvents
         putMVar vsyncMV ()
-        glAction <- takeMVar graphicsMV
-        glAction
+        mglAction <- takeMVar graphicsMV
+        case mglAction of
+          Nothing -> do
+            terminate
+            exitSuccess
+          Just glAction -> glAction
         swapBuffers win
         flag <- readIORef windowClosingRef
         shouldClose <- windowShouldClose win
         when (shouldClose && flag == False) $ do
           putMVar closeMV ()
           writeIORef windowClosingRef True
-      putStrLn "terminating"
-      terminate
       
 sizeCb :: ((Int,Int) -> IO ()) -> Window -> Int -> Int -> IO ()
 sizeCb go _ w h = go (w,h)
@@ -156,8 +150,3 @@ clickCb go _ button state mods = go (button,state,mods)
 mouseCb :: ((Double,Double) -> IO ()) -> Window -> Double -> Double -> IO ()
 mouseCb go _ x y = go (x,y)
 
-
-untilM :: IO Bool -> IO a -> IO ()
-untilM check action = do
-  y <- check
-  if y then return () else action >> untilM check action
