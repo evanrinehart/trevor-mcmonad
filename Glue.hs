@@ -19,15 +19,15 @@ import Graphics.UI.GLFW
 import Control.Broccoli
 
 data GlfwInputs = GlfwInputs
-  { glfwKeyEvent :: E (Key, Int, KeyState, ModifierKeys)
-  , glfwCharEvent :: E Char
-  , glfwCursorPos :: X (Double,Double)
-  , glfwMouseButtonEvent :: E (MouseButton, MouseButtonState, ModifierKeys)
-  , glfwScrollEvent :: E (Double,Double)
+  { onKey :: E (Key, Int, KeyState, ModifierKeys)
+  , onChar :: E Char
+  , onCursorPos :: X (Double,Double)
+  , onMouseButton :: E (MouseButton, MouseButtonState, ModifierKeys)
+  , onScroll :: E (Double,Double)
   , glfwJoysticks :: Vector GlfwJoystickInput -- 16
-  , glfwFramebufferSizeEvent :: E (Int,Int)
-  , glfwVsync :: E ()
-  , glfwWindowCloseEvent :: E ()
+  , onFramebufferResize :: E (Int,Int)
+  , onVsync :: E ()
+  , onClose :: E ()
   }
 
 data GlfwJoystickInput = GlfwJoystickInput
@@ -54,8 +54,10 @@ runGlfw :: Int
         -> (GlfwInputs -> GlOut -> E Boot -> X Time -> Setup (E ()))
         -> IO ()
 runGlfw winW winH title setup = do
+  hPutStrLn stderr "runGlfw begin"
   setErrorCallback (Just errorCb)
   status <- Graphics.UI.GLFW.init
+  print status
   when (status == False) $ do
     pollEvents
     exitFailure
@@ -63,12 +65,15 @@ runGlfw winW winH title setup = do
   windowHint (WindowHint'ContextVersionMinor 2)
   windowHint (WindowHint'OpenGLForwardCompat True)
   windowHint (WindowHint'OpenGLProfile OpenGLProfile'Core)
+  hPutStrLn stderr "creating window"
   mwin <- createWindow winW winH title Nothing Nothing
   case mwin of
     Nothing -> do
+      hPutStrLn stderr "window failed"
       pollEvents
       exitFailure
     Just win -> do
+      hPutStrLn stderr "start setup"
       windowClosingRef <- newIORef False
       pleaseExit <- newIORef False
       makeContextCurrent (Just win)
@@ -88,6 +93,7 @@ runGlfw winW winH title setup = do
       setMouseButtonCallback win (Just (clickCb (putMVar clickMV)))
       setCursorPosCallback   win (Just (mouseCb (putMVar mouseMV)))
       forkIO $ do
+        putStrLn "forked, about to runProgram"
         runProgram $ \onBoot time -> do
           (mouse, setMouse) <- newX initialMouse
           (onClick, click) <- newE
@@ -107,7 +113,9 @@ runGlfw winW winH title setup = do
           let glfwIns = GlfwInputs onKey onChar mouse onClick never
                   joysticks onResize onVsync onClose
           setup glfwIns (GlOut graphicsMV) onBoot time
+        putStrLn "program ended"
         writeIORef pleaseExit True
+      putStrLn "entering main loop"
       untilM (readIORef pleaseExit) $ do
         pollEvents
         putMVar vsyncMV ()
@@ -119,6 +127,7 @@ runGlfw winW winH title setup = do
         when (shouldClose && flag == False) $ do
           putMVar closeMV ()
           writeIORef windowClosingRef True
+      putStrLn "terminating"
       terminate
       
 sizeCb :: ((Int,Int) -> IO ()) -> Window -> Int -> Int -> IO ()
@@ -151,4 +160,4 @@ mouseCb go _ x y = go (x,y)
 untilM :: IO Bool -> IO a -> IO ()
 untilM check action = do
   y <- check
-  if y then action >> untilM check action else return ()
+  if y then return () else action >> untilM check action
