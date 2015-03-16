@@ -51,7 +51,7 @@ execInMainThread (GlOut mv) io = putMVar mv io
 runGlfw :: Int
         -> Int
         -> String
-        -> (GlfwInputs -> GlOut -> E Boot -> X Time -> Setup (E ()))
+        -> (GlfwInputs -> (IO () -> IO ()) -> E Boot -> X Time -> Setup (E ()))
         -> IO ()
 runGlfw winW winH title setup = do
   hPutStrLn stderr "runGlfw begin"
@@ -112,7 +112,7 @@ runGlfw winW winH title setup = do
           let joysticks = V.replicate 16 nullJoystick
           let glfwIns = GlfwInputs onKey onChar mouse onClick never
                   joysticks onResize onVsync onClose
-          setup glfwIns (GlOut graphicsMV) onBoot time
+          setup glfwIns (\io -> putMVar graphicsMV io) onBoot time
         putStrLn "program ended"
         writeIORef pleaseExit True
       putStrLn "entering main loop"

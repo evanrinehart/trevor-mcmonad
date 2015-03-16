@@ -10,14 +10,24 @@ import Glue
 data Scene = Scene
 
 setupGL :: IO ()
-setupGL = return ()
+setupGL = do
+  putStrLn "setupGL"
 
 renderScene :: Scene -> IO ()
-renderScene _ = return ()
+renderScene _ = do
+  putStrLn "renderScene"
+
+diff :: Eq a => a -> a -> Maybe (a,a)
+diff a b = if a == b then Nothing else Just (a,b)
 
 main :: IO ()
-main = runGlfw 640 480 "Broccoli" $ \glins glout onBoot time -> do
-  output (\_ _ -> execInMainThread glout (return ())) (onVsync glins)
+main = runGlfw 640 480 "Broccoli" $ \glins mainThread onBoot time -> do
+  output (const print) (onKey glins)
+  output (const print) (onChar glins)
+  output (const print) (edge diff (onCursorPos glins))
+  output (const print) (onMouseButton glins)
+  output (\_ _ -> mainThread setupGL) onBoot
+  output (\_ _ -> mainThread (renderScene Scene)) (onVsync glins)
   return (onClose glins)
 
 setup = do
