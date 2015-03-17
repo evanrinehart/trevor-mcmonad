@@ -52,7 +52,6 @@ runGlfw :: Int -- ^ window width
 runGlfw winW winH title initProc renderProc setup = do
   setErrorCallback (Just errorCb)
   status <- Graphics.UI.GLFW.init
-  print status
   when (status == False) $ do
     pollEvents
     exitFailure

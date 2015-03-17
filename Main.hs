@@ -6,8 +6,10 @@ import Control.Applicative
 
 import Control.Broccoli
 import Glue
+import Util
 
 data Scene = Scene
+data Sound = Sound
 
 setupGL :: IO ()
 setupGL = do
@@ -19,16 +21,25 @@ renderScene _ = do
   --putStrLn "renderScene"
   return ()
 
-diff :: Eq a => a -> a -> Maybe (a,a)
-diff a b = if a == b then Nothing else Just (a,b)
-
 main :: IO ()
 main = runGlfw 640 480 "Broccoli" setupGL renderScene $ \glfw onBoot time -> do
-  output (const print) (glfwKey glfw)
-  output (const print) (glfwChar glfw)
-  output (const print) (edge diff (glfwCursorPos glfw))
-  output (const print) (glfwMouseButton glfw)
-  output (const print) (edge diff (glfwJoystickAxes ((glfwJoysticks glfw) !! 0)))
-  let scene = pure Scene
+  let jaxis0 = glfwJoystickAxes ((glfwJoysticks glfw) !! 0)
+  let jbut0 = glfwJoystickButtons ((glfwJoysticks glfw) !! 0)
+  let joy0 = glfwJoystickPresent ((glfwJoysticks glfw) !! 0)
+  let keyboard = glfwKey glfw
+  let mouse = glfwCursorPos glfw
+  let clickRelease = glfwMouseButton glfw
+  let (scene, _) = program onBoot time
+  output (const print) (snapshot_ onBoot joy0)
   return (scene, glfwClose glfw)
 
+program :: E () -> X Time -> (X Scene, E Sound)
+program onBoot time = (scene, never) where
+  scene = pure Scene
+
+{-
+  { glfwKey :: E (Key, Int, KeyState, ModifierKeys)
+  , glfwChar :: E Char
+  , glfwCursorPos :: X (Double,Double)
+  , glfwMouseButton :: E (MouseButton, MouseButtonState, ModifierKeys)
+-}
