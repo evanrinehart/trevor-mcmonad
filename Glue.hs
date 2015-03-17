@@ -212,11 +212,9 @@ joystickPoller jnum buttonChange axisChange = do
     mbts <- getJoystickButtons jnum
     case mbts of
       Nothing -> return ()
-      --Just bts -> buttonChange bts
-      Just bts -> return ()
+      Just bts -> buttonChange bts
     maxes <- getJoystickAxes jnum
     case maxes of
       Nothing -> return ()
-      --Just axes -> axisChange axes
-      Just axes -> return ()
+      Just axes -> axisChange axes
     threadDelay 20000

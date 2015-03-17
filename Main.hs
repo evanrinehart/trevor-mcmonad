@@ -28,6 +28,7 @@ main = runGlfw 640 480 "Broccoli" setupGL renderScene $ \glfw onBoot time -> do
   output (const print) (glfwChar glfw)
   output (const print) (edge diff (glfwCursorPos glfw))
   output (const print) (glfwMouseButton glfw)
+  output (const print) (edge diff (glfwJoystickAxes ((glfwJoysticks glfw) !! 0)))
   let scene = pure Scene
   return (scene, glfwClose glfw)
 
